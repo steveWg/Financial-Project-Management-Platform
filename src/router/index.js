@@ -12,6 +12,7 @@ const ProgressEntry = () => import('../views/ProgressEntry.vue')
 const Tracking = () => import('../views/Tracking.vue')
 const Reports = () => import('../views/Reports.vue')
 const WarningCenter = () => import('../views/WarningCenter.vue')
+const DataExchange = () => import('../views/DataExchange.vue')
 const NotFound = () => import('../views/NotFound.vue')
 
 const routes = [
@@ -29,7 +30,8 @@ const routes = [
       { path: 'progress', name: 'progress', component: ProgressEntry, meta: { title: '拨付与项目进度录入' } },
       { path: 'tracking', name: 'tracking', component: Tracking, meta: { title: '项目跟踪台账' } },
       { path: 'reports', name: 'reports', component: Reports, meta: { title: '资金查询统计' } },
-      { path: 'warnings', name: 'warnings', component: WarningCenter, meta: { title: '资金与进度预警中心' } }
+      { path: 'warnings', name: 'warnings', component: WarningCenter, meta: { title: '资金与进度预警中心' } },
+      { path: 'data-exchange', name: 'data-exchange', component: DataExchange, meta: { title: '数据导入导出' } }
     ]
   },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFound }

@@ -3,21 +3,37 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "vite build && node scripts/copy-404.js",
-    "preview": "vite preview --host 0.0.0.0"
+    "server": "node server/index.js",
+    "dev:full": "concurrently \"pnpm:server\" \"pnpm:dev\"",
+    "build": "vite build --configLoader native && node scripts/copy-404.js",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:server": "vitest run server/tests --configLoader native",
+    "test": "pnpm run test:server"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
+    "@lucide/vue": "^1.17.0",
     "@vitejs/plugin-vue": "^5.2.3",
+    "cors": "^2.8.5",
     "echarts": "^5.6.0",
     "element-plus": "^2.9.6",
-    "@lucide/vue": "^1.17.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "multer": "^2.1.1",
     "pinia": "^2.3.0",
     "vite": "^6.0.7",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "supertest": "^7.1.0",
+    "vitest": "^3.1.1"
+  }
 }

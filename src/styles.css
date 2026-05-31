@@ -153,6 +153,10 @@ body {
   width: 120px;
 }
 
+.backend-alert {
+  width: 260px;
+}
+
 .content {
   padding: 20px;
 }
@@ -210,6 +214,16 @@ body {
   color: #111827;
   font-size: 16px;
   font-weight: 700;
+}
+
+.data-exchange-header {
+  margin-bottom: 0;
+}
+
+.data-exchange-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .metric-grid {

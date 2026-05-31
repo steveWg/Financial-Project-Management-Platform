@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { apiClient } from '../api/client'
 import { initialDictionaries, initialProjects, initialUsers, paymentLabels } from '../data/mock'
 import { buildWarnings } from '../utils/warnings'
 
@@ -60,6 +61,8 @@ function readState() {
 export const useProjectStore = defineStore('project-store', () => {
   const state = ref(readState())
   const currentRole = ref(state.value.session?.role || '管理员')
+  const loading = ref(false)
+  const backendError = ref('')
 
   const users = computed(() => state.value.users)
   const dictionaries = computed(() => state.value.dictionaries)
@@ -73,7 +76,6 @@ export const useProjectStore = defineStore('project-store', () => {
     }))
   )
   const pendingWarnings = computed(() => warnings.value.filter((item) => item.status === '待处理'))
-
   const totals = computed(() => calculateTotals(projects.value))
 
   function calculateTotals(list) {
@@ -102,6 +104,29 @@ export const useProjectStore = defineStore('project-store', () => {
     return `${prefix}${Date.now()}${list.length}`
   }
 
+  function applyRemoteState(payload) {
+    state.value = {
+      ...state.value,
+      users: payload.users || state.value.users,
+      dictionaries: payload.dictionaries || state.value.dictionaries,
+      projects: (payload.projects || state.value.projects).map(normalizeProject),
+      handledWarnings: payload.handledWarnings || state.value.handledWarnings
+    }
+    persist()
+  }
+
+  async function loadRemoteState() {
+    loading.value = true
+    backendError.value = ''
+    try {
+      applyRemoteState(await apiClient.bootstrap())
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+    } finally {
+      loading.value = false
+    }
+  }
+
   function login({ account, role }) {
     const matched = state.value.users.find((item) => item.account === account && item.status === '启用') || state.value.users.find((item) => item.role === role)
     const user = matched || state.value.users[0]
@@ -121,74 +146,119 @@ export const useProjectStore = defineStore('project-store', () => {
     persist()
   }
 
-  function saveUser(payload) {
-    if (payload.id) {
-      state.value.users = state.value.users.map((item) => (item.id === payload.id ? { ...item, ...payload } : item))
-    } else {
-      state.value.users.unshift({ ...payload, id: nextId('u', state.value.users), createdAt: new Date().toISOString().slice(0, 10) })
+  async function saveUser(payload) {
+    try {
+      const response = payload.id ? await apiClient.updateUser(payload.id, payload) : await apiClient.createUser(payload)
+      applyRemoteState(response)
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      if (payload.id) state.value.users = state.value.users.map((item) => (item.id === payload.id ? { ...item, ...payload } : item))
+      else state.value.users.unshift({ ...payload, id: nextId('u', state.value.users), createdAt: new Date().toISOString().slice(0, 10) })
+      persist()
     }
-    persist()
   }
 
-  function toggleUserStatus(user) {
-    user.status = user.status === '启用' ? '停用' : '启用'
-    persist()
+  async function toggleUserStatus(user) {
+    const status = user.status === '启用' ? '停用' : '启用'
+    try {
+      applyRemoteState(await apiClient.updateUserStatus(user.id, status))
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      user.status = status
+      persist()
+    }
   }
 
-  function addDictionaryItem(type, value) {
+  async function addDictionaryItem(type, value) {
     if (!value || !state.value.dictionaries[type] || state.value.dictionaries[type].includes(value)) return
-    state.value.dictionaries[type].push(value)
-    persist()
-  }
-
-  function removeDictionaryItem(type, value) {
-    state.value.dictionaries[type] = state.value.dictionaries[type].filter((item) => item !== value)
-    persist()
-  }
-
-  function saveProject(payload) {
-    const normalized = normalizeProject(payload)
-    if (payload.id) {
-      state.value.projects = state.value.projects.map((item) => (item.id === payload.id ? { ...item, ...normalized } : item))
-    } else {
-      state.value.projects.unshift(
-        normalizeProject({
-          ...normalized,
-          id: nextId('p', state.value.projects),
-          serialNo: Math.max(...state.value.projects.map((item) => Number(item.serialNo || 0)), 0) + 1,
-          logs: []
-        })
-      )
+    try {
+      applyRemoteState(await apiClient.addDictionaryItem(type, value))
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      state.value.dictionaries[type].push(value)
+      persist()
     }
-    persist()
+  }
+
+  async function removeDictionaryItem(type, value) {
+    try {
+      applyRemoteState(await apiClient.removeDictionaryItem(type, value))
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      state.value.dictionaries[type] = state.value.dictionaries[type].filter((item) => item !== value)
+      persist()
+    }
+  }
+
+  async function saveProject(payload) {
+    try {
+      const response = payload.id ? await apiClient.updateProject(payload.id, payload) : await apiClient.createProject(payload)
+      applyRemoteState(response)
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      const normalized = normalizeProject(payload)
+      if (payload.id) {
+        state.value.projects = state.value.projects.map((item) => (item.id === payload.id ? { ...item, ...normalized } : item))
+      } else {
+        state.value.projects.unshift(
+          normalizeProject({
+            ...normalized,
+            id: nextId('p', state.value.projects),
+            serialNo: Math.max(...state.value.projects.map((item) => Number(item.serialNo || 0)), 0) + 1,
+            logs: []
+          })
+        )
+      }
+      persist()
+    }
   }
 
   function findProject(projectId) {
     return state.value.projects.find((item) => item.id === projectId)
   }
 
-  function saveProjectProgress(projectId, payload) {
+  async function saveProjectProgress(projectId, payload) {
     const project = findProject(projectId)
     if (!project) return
 
-    Object.assign(project, normalizeProject({ ...project, ...payload }))
-    project.logs = project.logs || []
-    project.logs.unshift({
-      id: nextId('l', project.logs),
-      date: new Date().toISOString().slice(0, 10),
-      author: payload.operator || currentUser.value?.name || '当前用户',
-      content: `更新拨款进度至 ${(project.paymentProgress * 100).toFixed(2)}%，项目进度为${project.projectProgress}。`
-    })
-    persist()
+    try {
+      applyRemoteState(await apiClient.updateProjectProgress(projectId, payload))
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      Object.assign(project, normalizeProject({ ...project, ...payload }))
+      project.logs = project.logs || []
+      project.logs.unshift({
+        id: nextId('l', project.logs),
+        date: new Date().toISOString().slice(0, 10),
+        author: payload.operator || currentUser.value?.name || '当前用户',
+        content: `更新拨款进度至 ${(project.paymentProgress * 100).toFixed(2)}%，项目进度为${project.projectProgress}。`
+      })
+      persist()
+    }
   }
 
-  function handleWarning(id, payload) {
-    state.value.handledWarnings[id] = {
-      status: '已处理',
-      handler: payload.handler,
-      note: payload.note
+  async function handleWarning(id, payload) {
+    try {
+      applyRemoteState(await apiClient.handleWarning(id, payload))
+    } catch (error) {
+      backendError.value = error.message || '后端服务连接失败'
+      state.value.handledWarnings[id] = {
+        status: '已处理',
+        handler: payload.handler,
+        note: payload.note
+      }
+      persist()
     }
-    persist()
+  }
+
+  async function previewProjectImport(file) {
+    return apiClient.previewProjectImport(file)
+  }
+
+  async function applyProjectImport(file) {
+    const result = await apiClient.applyProjectImport(file)
+    await loadRemoteState()
+    return result
   }
 
   return {
@@ -201,7 +271,10 @@ export const useProjectStore = defineStore('project-store', () => {
     warnings,
     pendingWarnings,
     totals,
+    loading,
+    backendError,
     calculateTotals,
+    loadRemoteState,
     login,
     logout,
     saveUser,
@@ -211,6 +284,8 @@ export const useProjectStore = defineStore('project-store', () => {
     saveProject,
     findProject,
     saveProjectProgress,
-    handleWarning
+    handleWarning,
+    previewProjectImport,
+    applyProjectImport
   }
 })
